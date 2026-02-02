@@ -66,7 +66,7 @@ class SaccClLikelihood(GaussianLikelihood):
         self.save_theory = options.get_string("save_theory", "")
         self.save_realization = options.get_string("save_realization", "")
         self.flip = options.get_string("flip", "").split()
-        self.sacc_like = options.get_string("sacc_like", "2pt")
+        self.sacc_like = options.get_string("sacc_like", "twopoint")
 
         super().__init__(options)
 
