@@ -74,9 +74,18 @@ def get_choice(options, name, valid, default=None, prefix=''):
     return prefix + choice
 
 
-def make_z_for_pk(more_config):
+def make_z_for_pk(more_config, mode="integration"):
+    if mode == "integration":
+        if more_config["no_integrate_to_z_0"]:
+            zmin = more_config['zmin']
+        else:
+            zmin = 0.0
+    elif mode == "saving":
+        zmin = more_config['zmin']
+    else:
+        raise ValueError("Unknown mode {}. Must be one of: integration, saving".format(mode))
     if "zmid" in more_config:
-        z = np.concatenate((np.linspace(more_config['zmin'], 
+        z = np.concatenate((np.linspace(zmin,
                                         more_config['zmid'], 
                                         more_config['nz_mid'], 
                                         endpoint=False),
@@ -84,7 +93,7 @@ def make_z_for_pk(more_config):
                                         more_config['zmax'], 
                                         more_config['nz']-more_config['nz_mid'])))[::-1]
     else:
-        z = np.linspace(more_config['zmin'], more_config['zmax'], more_config["nz"])[::-1]
+        z = np.linspace(zmin, more_config['zmax'], more_config["nz"])[::-1]
 
     return z
 
@@ -218,6 +227,14 @@ def setup(options):
         good_power = ", ".join(matter_power_section_names.keys())
         raise ValueError("""These matter power types are not known: {}.
 Please use any these (separated by spaces): {}""".format(bad_power, good_power))
+
+    more_config["no_integrate_to_z_0"] = options.get_bool(opt, "no_integrate_to_z_0", default=False)
+
+    if more_config["no_integrate_to_z_0"] and more_config["zmin"] != 0:
+        warnings.warn("You have set no_integrate_to_z_0 to avoid integrating to redshift zero "
+                      "and your zmin>0. A side-effect of this is to prevent us calculating sigma8(0), "
+                      "so if you want that quantity you can switch off this setting. This setting "
+                      "does not affect the zmin used when computing P(k,z).")
 
     camb.set_feedback_level(level=options.get_int(opt, "feedback", default=0))
     return [config, more_config]
@@ -450,7 +467,7 @@ def extract_camb_params(block, config, more_config):
     p.set_accuracy(**more_config["accuracy_params"])
 
     if want_perturbations:
-        z = make_z_for_pk(more_config)
+        z = make_z_for_pk(more_config, mode="integration")
         p.set_matter_power(redshifts=z, nonlinear=config["NonLinear"] in ["NonLinear_both", "NonLinear_pk"], **more_config["transfer_params"])
 
     return p
@@ -573,7 +590,7 @@ def save_matter_power(r, block, more_config):
     # and the max one extrapolated out too.  We output to the larger
     # of these
     kmax_power = max(more_config['kmax'], more_config['kmax_extrapolate'])
-    z = make_z_for_pk(more_config)[::-1]
+    z = make_z_for_pk(more_config, mode="saving")[::-1]
     if block.has_value('redshift_as_parameter', 'z'):
         z = np.atleast_1d(block['redshift_as_parameter', 'z'])
 
@@ -649,12 +666,21 @@ def save_matter_power(r, block, more_config):
     block[names.growth_parameters, "d_z"] = D
     block[names.growth_parameters, "f_z"] = f
 
-    block[names.cosmological_parameters, "sigma_8"] = sigma_8[0]    
-
-    # sigma12 and S_8 - other variants of sigma_8
-    sigma12 = r.get_sigmaR(R=12.0, z_indices=-1, hubble_units=False)
-    block[names.cosmological_parameters, "sigma_12"] = sigma12
-    block[names.cosmological_parameters, "S_8"] = sigma_8[0]*np.sqrt(p.omegam/0.3)
+    # Save sigma_8 at z=0 in the cosmological parameters section, if we have it.
+    # If the zmin is set to zero anyway we can just go ahead.
+    # Otherwise unless the user set no_integrate_to_z_0, we will have integrated to z=0 to
+    # get sigma_8(0) and can use that.
+    if more_config["zmin"] == 0 or (not more_config["no_integrate_to_z_0"]):
+        # Note that despite the make_z_for_pk function returning z in chronological (i.e. decreasing)
+        # order, we have reversed that above back to increasing order, so the first element is indeed z=0 if it is included.
+        if z[0] == 0:
+            block[names.cosmological_parameters, "sigma_8"] = sigma_8[0]
+        else:
+            block[names.cosmological_parameters, "sigma_8"] = r.get_sigma8_0()
+        # sigma12 and S_8 - other variants of sigma_8
+        sigma12 = r.get_sigmaR(R=12.0, z_indices=-1, hubble_units=False)
+        block[names.cosmological_parameters, "sigma_12"] = sigma12
+        block[names.cosmological_parameters, "S_8"] = sigma_8[0]*np.sqrt(p.omegam/0.3)
 
 
 def save_cls(r, block):

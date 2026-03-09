@@ -127,6 +127,14 @@ params:
         meaning: Number of k values to save P(k,z).
         type: int
         default: 200
+    no_integrate_to_z_0:
+        meaning: By default we ask CAMB to integrate down to z=0 to get sigma_8(0), even if
+            you request the zmin parameter non-zero. This could cost some time, but does
+            not affect the output grid in z for P(k, z). Set this to true to avoid doing
+            that integration if you are sure you won't need sigma_8 at z=0, and are using
+            zmin>0.
+        type: bool
+        default: false
     zmin:
         meaning: Min redshift value to save P(k,z).
         type: real
