@@ -263,6 +263,12 @@ jobs:
         grep -e "🟢 fiducial-test-only" output/campaign.log
         cosmosis-campaign  examples/des-campaign.yml --status
 
+    - name: Run Unit Tests
+      shell: bash -l {0}
+      run: |
+        source cosmosis-configure
+        pytest -vv --durations=0 tests/unit_tests
+
     - name: Run Tests
       shell: bash -l {0}
       run: |
